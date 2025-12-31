@@ -1,0 +1,50 @@
+{
+  "nodes": [
+    {
+      "id": "trigger-node-1",
+      "type": "triggerNode",
+      "data": {
+        "name": "Start",
+        "initial_message": "Hello! I'm your AI assistant. How can I help you today?"
+      }
+    },
+    {
+      "id": "agent-node-1",
+      "type": "agentNode",
+      "data": {
+        "name": "Assistant",
+        "instructions": "You are a helpful AI assistant. You can help users manage their calendar and schedule meetings. Be friendly and concise in your responses.",
+        "model": "gpt-4o"
+      }
+    },
+    {
+      "id": "tool-node-1",
+      "type": "toolNode",
+      "data": {
+        "toolType": "mcp",
+        "name": "Calendar MCP",
+        "config": {
+          "url": "https://mcp.example.com/calendar",
+          "type": "streamable",
+          "headers": {
+            "Authorization": "Bearer test-token"
+          },
+          "allowed_tools": ["list_events", "create_event", "delete_event"]
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "trigger-node-1",
+      "target": "agent-node-1"
+    },
+    {
+      "source": "agent-node-1",
+      "target": "tool-node-1",
+      "type": "AgentTool"
+    }
+  ]
+}
+
+

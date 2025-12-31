@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sketric-ml-backend-test"
+version = "1.0.0"
+description = "ML/Backend Engineer Technical Assessment"
+readme = "README.md"
+requires-python = ">=3.11"
+
+
