@@ -20,7 +20,6 @@ import re
 from typing import Dict, List, Optional, Any, Tuple
 
 from livekit.agents import Agent, ChatContext
-from livekit.agents import mcp
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +62,7 @@ async def build_agents_from_workflow(
 
 
 
-def create_mcp_server(config: Dict[str, Any]) -> Optional[mcp.MCPServerHTTP]:
+def create_mcp_server(config: Dict[str, Any]):
     """
     Create an MCP server instance from configuration.
     

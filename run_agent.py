@@ -70,7 +70,7 @@ async def main():
     
     # Try to build the agent
     try:
-        from livekit.workflow_parser import build_agents_from_workflow
+        from workflow_parser import build_agents_from_workflow
         
         logger.info("Building agent from workflow...")
         agent = await build_agents_from_workflow(workflow_json)

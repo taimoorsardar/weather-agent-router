@@ -40,10 +40,9 @@ sketric-ml-backend-test/
 ├── requirements.txt
 ├── sample_workflow.json      # Example workflow config
 ├── run_agent.py              # Test runner
-└── livekit/
-    └── workflow_parser/
-        ├── __init__.py
-        └── transformation_layer.py   # 👈 YOUR CODE HERE
+└── workflow_parser/
+    ├── __init__.py
+    └── transformation_layer.py   # 👈 YOUR CODE HERE
 ```
 
 ---
