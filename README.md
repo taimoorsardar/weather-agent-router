@@ -8,7 +8,7 @@ Build a transformation layer that converts workflow JSON into executable **LiveK
 
 ## 📋 Your Task
 
-Complete `livekit/workflow_parser/transformation_layer.py` to:
+Complete `workflow_parser/transformation_layer.py` to:
 
 1. **Parse** the workflow JSON (`sample_workflow.json`)
 2. **Build** a LiveKit Agent with the configured instructions and model
@@ -20,14 +20,14 @@ Complete `livekit/workflow_parser/transformation_layer.py` to:
 ## 🚀 Quick Start
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Sync dependencies
+uv sync
 
 # Set your OpenAI API key
 export OPENAI_API_KEY="sk-your-key"
 
 # Run the test
-python run_agent.py
+uv run python run_agent.py
 ```
 
 ---
@@ -37,13 +37,28 @@ python run_agent.py
 ```
 sketric-ml-backend-test/
 ├── README.md
-├── requirements.txt
+├── pyproject.toml            # Project config & dependencies
+├── uv.lock                   # Locked dependencies
+├── requirements.txt          # Fallback for pip users
 ├── sample_workflow.json      # Example workflow config
 ├── run_agent.py              # Test runner
 └── workflow_parser/
     ├── __init__.py
     └── transformation_layer.py   # 👈 YOUR CODE HERE
 ```
+
+---
+
+## 📦 Dependencies
+
+Defined in `pyproject.toml`:
+
+- **livekit** >= 1.0.20
+- **livekit-agents[openai,silero,turn-detector]** >= 1.3.0
+- **livekit-plugins-noise-cancellation**
+- **python-dotenv** >= 1.0.0
+
+Requires **Python 3.11+**
 
 ---
 
@@ -55,6 +70,17 @@ Your implementation must:
 2. **Create an Agent class** dynamically using `type()`
 3. **Attach MCP servers** with `allowed_tools` filtering
 4. **Handle the initial greeting** from trigger node
+
+---
+
+## 🔧 Workflow JSON Structure
+
+The `sample_workflow.json` contains:
+
+- **triggerNode**: Entry point with voice trigger configuration
+- **agentNode**: Agent configuration (name, instructions, model, TTS settings)
+- **toolNode**: MCP server configuration with URL and allowed tools
+- **edges**: Connections between nodes (default, AgentHandoff)
 
 ---
 
