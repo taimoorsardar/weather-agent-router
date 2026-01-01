@@ -1,50 +1,76 @@
 {
+  "workflowId": "flowai_workflow_1767257712582",
   "nodes": [
     {
-      "id": "trigger-node-1",
+      "id": "trigger-node-afad7ff4",
       "type": "triggerNode",
       "data": {
-        "name": "Start",
-        "initial_message": "Hello! I'm your AI assistant. How can I help you today?"
+        "triggerType": "text",
+        "inputType": "text"
+      },
+      "position": {
+        "x": 630,
+        "y": 360
       }
     },
     {
-      "id": "agent-node-1",
+      "id": "agent-node-506ed488",
       "type": "agentNode",
       "data": {
-        "name": "Assistant",
-        "instructions": "You are a helpful AI assistant. You can help users manage their calendar and schedule meetings. Be friendly and concise in your responses.",
-        "model": "gpt-4o"
+        "name": "Google Sheet Assistant",
+        "model": "gpt-4.1-mini",
+        "instructions": "### Role:\nYou are a helpful AI agent\n\n### Tasks:\nUnderstand the user's request, provide accurate and actionable help, and use available tools only when appropriate.\n\n### Goal and success criteria:\nThe task is successful if the response is correct, clear, respectful, safe and helps the user.",
+        "is_enabled": true,
+        "is_tool_agent": false
+      },
+      "position": {
+        "x": 930,
+        "y": 270
       }
     },
     {
-      "id": "tool-node-1",
+      "id": "tool-node-df09720b",
       "type": "toolNode",
       "data": {
+        "name": "google_sheet_tools",
         "toolType": "mcp",
-        "name": "Calendar MCP",
+        "description": "This server contains all the tools of Google Sheets",
+        "is_enabled": false,
         "config": {
-          "url": "https://mcp.example.com/calendar",
+          "url": "https://mcp.zapier.com/api/mcp/s/NmZlN2E5ZTYtNzA4OC00NTIzLTgyNTgtN2YyMTcwMmIwOWNiOjAwOTI5NjViLTVkNGItNGVkOS1iMzlkLTk0MDcyMTkxYTZlNw==/mcp",
           "type": "streamable",
-          "headers": {
-            "Authorization": "Bearer test-token"
-          },
-          "allowed_tools": ["list_events", "create_event", "delete_event"]
+          "headers": {},
+          "allowed_tools": [
+            "google_sheets_create_spreadsheet_column",
+            "google_sheets_create_spreadsheet_row",
+            "google_sheets_create_spreadsheet_row_at_top",
+            "google_sheets_create_spreadsheet",
+            "google_sheets_create_worksheet"
+          ]
         }
+      },
+      "position": {
+        "x": 930,
+        "y": 650
       }
     }
   ],
   "edges": [
     {
-      "source": "trigger-node-1",
-      "target": "agent-node-1"
+      "id": "e|trigger-node-afad7ff4output|agent-node-506ed488input",
+      "source": "trigger-node-afad7ff4",
+      "target": "agent-node-506ed488",
+      "sourceHandle": "output",
+      "targetHandle": "input",
+      "type": "default"
     },
     {
-      "source": "agent-node-1",
-      "target": "tool-node-1",
-      "type": "AgentTool"
+      "id": "e|agent-node-506ed488tools|tool-node-df09720bin",
+      "source": "agent-node-506ed488",
+      "target": "tool-node-df09720b",
+      "sourceHandle": "tools",
+      "targetHandle": "in",
+      "type": "default"
     }
   ]
 }
-
-
