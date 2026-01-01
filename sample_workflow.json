@@ -1,40 +1,45 @@
 {
-  "workflowId": "flowai_workflow_1767258384835",
+  "workflowId": "flowai_workflow_1767258878594",
   "nodes": [
     {
       "id": "trigger-node-afad7ff4",
       "type": "triggerNode",
       "data": {
-        "triggerType": "text",
-        "inputType": "text"
+        "triggerType": "voice",
+        "inputType": "voice"
       },
       "position": {
-        "x": 630,
-        "y": 360
+        "x": 375,
+        "y": 270
       }
     },
     {
       "id": "agent-node-506ed488",
       "type": "agentNode",
       "data": {
-        "name": "Google Sheet Assistant",
+        "name": "Google Sheet Agent",
         "model": "gpt-4.1-mini",
-        "instructions": "### Role:\nYou are a helpful AI agent\n\n### Tasks:\nUnderstand the user's request, provide accurate and actionable help, and use available tools only when appropriate.\n\n### Goal and success criteria:\nThe task is successful if the response is correct, clear, respectful, safe and helps the user.",
+        "instructions": "You are a helpful assistant.",
         "is_enabled": true,
-        "is_tool_agent": false
+        "is_tool_agent": false,
+        "tts_config": {
+          "provider": "openai",
+          "voice": "nova",
+          "language": "en"
+        }
       },
       "position": {
-        "x": 930,
-        "y": 270
+        "x": 675,
+        "y": 180
       }
     },
     {
-      "id": "tool-node-df09720b",
+      "id": "tool-node-529e90ce",
       "type": "toolNode",
       "data": {
         "name": "google_sheet_tools",
         "toolType": "mcp",
-        "description": "This server contains all the tools of Google Sheets",
+        "description": "This servers contains some important google sheet tools",
         "is_enabled": false,
         "config": {
           "url": "https://mcp.zapier.com/api/mcp/s/NmZlN2E5ZTYtNzA4OC00NTIzLTgyNTgtN2YyMTcwMmIwOWNiOjAwOTI5NjViLTVkNGItNGVkOS1iMzlkLTk0MDcyMTkxYTZlNw==/mcp",
@@ -50,24 +55,29 @@
         }
       },
       "position": {
-        "x": 930,
-        "y": 650
+        "x": 675,
+        "y": 560
       }
     },
     {
-      "id": "agent-node-c0bb7a6a",
+      "id": "agent-node-72459985",
       "type": "agentNode",
       "data": {
         "name": "Web Search Agent",
         "model": "gpt-4.1-mini",
         "instructions": "### Role:\nYou are a helpful AI agent\n\n### Tasks:\nUnderstand the user's request, provide accurate and actionable help, and use available tools only when appropriate.\n\n### Goal and success criteria:\nThe task is successful if the response is correct, clear, respectful, safe and helps the user.",
         "is_enabled": true,
-        "handoff_description": "Handoff to this agent if user asks about web search",
-        "is_tool_agent": false
+        "handoff_description": "Handoff to this agent for web search queries",
+        "is_tool_agent": false,
+        "tts_config": {
+          "provider": "openai",
+          "voice": "nova",
+          "language": "en"
+        }
       },
       "position": {
-        "x": 1380,
-        "y": 270
+        "x": 1155,
+        "y": 160
       }
     }
   ],
@@ -81,20 +91,21 @@
       "type": "default"
     },
     {
-      "id": "e|agent-node-506ed488tools|tool-node-df09720bin",
+      "id": "e|agent-node-506ed488tools|tool-node-529e90cein",
       "source": "agent-node-506ed488",
-      "target": "tool-node-df09720b",
+      "target": "tool-node-529e90ce",
       "sourceHandle": "tools",
       "targetHandle": "in",
       "type": "default"
     },
     {
-      "id": "e|agent-node-506ed488output|agent-node-c0bb7a6ainput",
+      "id": "e|agent-node-506ed488output|agent-node-72459985input",
       "source": "agent-node-506ed488",
-      "target": "agent-node-c0bb7a6a",
+      "target": "agent-node-72459985",
       "sourceHandle": "output",
       "targetHandle": "input",
       "type": "AgentHandoff"
     }
-  ]
+  ],
+  "isVoiceAgent": true
 }
