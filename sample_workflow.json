@@ -1,5 +1,5 @@
 {
-  "workflowId": "flowai_workflow_1767257712582",
+  "workflowId": "flowai_workflow_1767258384835",
   "nodes": [
     {
       "id": "trigger-node-afad7ff4",
@@ -53,6 +53,22 @@
         "x": 930,
         "y": 650
       }
+    },
+    {
+      "id": "agent-node-c0bb7a6a",
+      "type": "agentNode",
+      "data": {
+        "name": "Web Search Agent",
+        "model": "gpt-4.1-mini",
+        "instructions": "### Role:\nYou are a helpful AI agent\n\n### Tasks:\nUnderstand the user's request, provide accurate and actionable help, and use available tools only when appropriate.\n\n### Goal and success criteria:\nThe task is successful if the response is correct, clear, respectful, safe and helps the user.",
+        "is_enabled": true,
+        "handoff_description": "Handoff to this agent if user asks about web search",
+        "is_tool_agent": false
+      },
+      "position": {
+        "x": 1380,
+        "y": 270
+      }
     }
   ],
   "edges": [
@@ -71,6 +87,14 @@
       "sourceHandle": "tools",
       "targetHandle": "in",
       "type": "default"
+    },
+    {
+      "id": "e|agent-node-506ed488output|agent-node-c0bb7a6ainput",
+      "source": "agent-node-506ed488",
+      "target": "agent-node-c0bb7a6a",
+      "sourceHandle": "output",
+      "targetHandle": "input",
+      "type": "AgentHandoff"
     }
   ]
 }
