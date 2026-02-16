@@ -1,1 +1,5 @@
 *.egg-info
+.env
+workflow_parser/__pycache__/
+workflow_parser/correct_transformation_layer.py
+uv.lock

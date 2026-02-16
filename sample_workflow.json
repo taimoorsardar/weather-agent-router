@@ -40,9 +40,9 @@
         "name": "google_sheet_tools",
         "toolType": "mcp",
         "description": "This servers contains some important google sheet tools",
-        "is_enabled": false,
+        "is_enabled": true,
         "config": {
-          "url": "https://mcp.zapier.com/api/mcp/s/NmZlN2E5ZTYtNzA4OC00NTIzLTgyNTgtN2YyMTcwMmIwOWNiOjAwOTI5NjViLTVkNGItNGVkOS1iMzlkLTk0MDcyMTkxYTZlNw==/mcp",
+          "url": "https://mcp.zapier.com/api/v1/connect?token=NmZlN2E5ZTYtNzA4OC00NTIzLTgyNTgtN2YyMTcwMmIwOWNiOm5FU29ReDkxbG90dlorNlJsWlIrOW03aWR0K0V4RjJFR0R4RE5aWnNCb3M9",
           "type": "streamable",
           "headers": {},
           "allowed_tools": [
