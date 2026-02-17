@@ -46,9 +46,9 @@ async def build_agents_from_workflow(
 
     # TODO: Step 3 - Derive session config from workflow; build Agent
 
-    # TODO: Step 4 - When ctx is not None, build AgentSession (vad=ctx.proc.userdata["vad"], stt, llm, tts, mcp_servers, turn_detection)
+    # TODO: Step 4 - build AgentSession 
 
-    # TODO: Step 5 - Return (agent, session or None)
+    # TODO: Step 5 - Return (agent, session)
 
     raise NotImplementedError("TODO: Implement build_agents_from_workflow")
 

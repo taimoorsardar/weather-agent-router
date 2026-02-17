@@ -42,9 +42,10 @@
         "description": "This servers contains some important google sheet tools",
         "is_enabled": true,
         "config": {
-          "url": "https://mcp.zapier.com/api/v1/connect?token=NmZlN2E5ZTYtNzA4OC00NTIzLTgyNTgtN2YyMTcwMmIwOWNiOm5FU29ReDkxbG90dlorNlJsWlIrOW03aWR0K0V4RjJFR0R4RE5aWnNCb3M9",
-          "type": "streamable",
-          "headers": {},
+          "url": "https://mcp.zapier.com/api/v1/connect",
+          "headers": {
+            "Authorization": "Bearer NmZlN2E5ZTYtNzA4OC00NTIzLTgyNTgtN2YyMTcwMmIwOWNiOklaSGNaRG9qcHdrSWF0bU1sY0Y2ajBjT3ZQUEQ4VmI1dzQ5VVphMHBwYXM9"
+          },
           "allowed_tools": [
             "google_sheets_create_spreadsheet_column",
             "google_sheets_create_spreadsheet_row",
