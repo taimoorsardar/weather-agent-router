@@ -45,6 +45,13 @@ async def main():
     # Explicit dispatch: ensure the voice-agent is dispatched to this room before we join
     lk = api.LiveKitAPI(url=url, api_key=api_key, api_secret=api_secret)
     try:
+        # Delete any existing room first to avoid duplicate agents
+        try:
+            await lk.room.delete_room(api.DeleteRoomRequest(room=room))
+            print(f"Deleted existing room '{room}'")
+        except Exception:
+            pass  # Room didn't exist, that's fine
+
         await lk.agent_dispatch.create_dispatch(
             api.CreateAgentDispatchRequest(agent_name="voice-agent", room=room),
         )
