@@ -13,6 +13,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from threading import Lock
 
 try:
     from dotenv import load_dotenv
@@ -31,6 +32,10 @@ from livekit.plugins.turn_detector import english as _td  # noqa: F401
 WORKFLOW_PATH = Path(__file__).parent / "sample_workflow.json"
 _ENV_WORKFLOW_PATH = "RUN_PY_WORKFLOW_PATH"
 
+# Track active rooms to prevent duplicate agents
+_active_rooms: set[str] = set()
+_active_rooms_lock = Lock()
+
 
 def load_workflow(path: Path) -> dict:
     with open(path) as f:
@@ -39,15 +44,17 @@ def load_workflow(path: Path) -> dict:
 async def _rtc_entrypoint(ctx):
     from livekit.agents import room_io
 
+    room_name = ctx.room.name
+
     # Ensure workflow_parser loggers are visible in worker process
     logging.getLogger("workflow_parser").setLevel(logging.INFO)
-    logger.info("Agent job started for room=%s", ctx.room.name)
+    logger.info("Agent job started for room=%s", room_name)
 
     path = os.environ.get(_ENV_WORKFLOW_PATH)
     if not path:
         raise RuntimeError("RUN_PY_WORKFLOW_PATH not set")
     workflow = load_workflow(Path(path))
-    ctx.log_context_fields = {"room": ctx.room.name}
+    ctx.log_context_fields = {"room": room_name}
 
     from workflow_parser.transformation_layer import build_agents_from_workflow
     logger.info("Building agent from transformation_layer...")
@@ -57,15 +64,34 @@ async def _rtc_entrypoint(ctx):
     if session is None:
         raise RuntimeError("build_agents_from_workflow returned session=None; implement transformation_layer to return (Agent, AgentSession)")
 
-    await session.start(
-        agent=agent,
-        room=ctx.room,
-        room_options=room_io.RoomOptions(
-            audio_input=room_io.AudioInputOptions(
-                noise_cancellation=noise_cancellation.BVC(),
+    try:
+        await session.start(
+            agent=agent,
+            room=ctx.room,
+            room_options=room_io.RoomOptions(
+                audio_input=room_io.AudioInputOptions(
+                    noise_cancellation=noise_cancellation.BVC(),
+                ),
             ),
-        ),
-    )
+        )
+    finally:
+        # Clean up room tracking when job ends
+        with _active_rooms_lock:
+            _active_rooms.discard(room_name)
+            logger.info(f"Room released: {room_name}")
+
+
+async def _on_request(req):
+    """Accept only if no agent is already active in this room."""
+    room_name = req.room.name
+    with _active_rooms_lock:
+        if room_name in _active_rooms:
+            logger.warning(f"Rejecting duplicate dispatch for room={room_name}")
+            await req.reject()
+            return
+        _active_rooms.add(room_name)
+        logger.info(f"Accepted dispatch for room={room_name}")
+    await req.accept()
 
 
 def _prewarm(proc):
@@ -84,7 +110,7 @@ def main():
     from livekit.agents import AgentServer, cli
     server = AgentServer()
     server.setup_fnc = _prewarm
-    server.rtc_session(agent_name="voice-agent")(_rtc_entrypoint)
+    server.rtc_session(agent_name="voice-agent", on_request=_on_request)(_rtc_entrypoint)
 
     print("\n" + "=" * 50)
     print("Voice agent running (from transformation_layer)")
