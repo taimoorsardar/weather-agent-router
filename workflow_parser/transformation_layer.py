@@ -11,10 +11,12 @@ Workflow JSON contains:
 """
 
 import asyncio
+import json as _json
 import logging
 from typing import Dict, List, Optional, Any, Tuple
 
-from livekit.agents import Agent, AgentSession, mcp
+from openai import AsyncOpenAI
+from livekit.agents import Agent, AgentSession, function_tool, mcp
 from livekit.plugins.openai import STT, LLM, TTS
 
 try:
@@ -68,27 +70,281 @@ async def build_agents_from_workflow(
 
     logger.info(f"Entry agent: {agent_data.get('name')} | model: {agent_data.get('model')}")
 
-    # 3. Collect MCP servers from connected tool nodes
-    mcp_servers = _build_mcp_servers(edges, entry_agent_node["id"], nodes_by_id)
+    # 3. Build MCP tool wrappers (each tool = a @function_tool that calls MCP on-demand)
+    mcp_tools = _build_mcp_tool_wrappers(edges, entry_agent_node["id"], nodes_by_id)
 
-    # 4. Pre-initialize MCP servers (prevents session.start() from hanging)
-    if ctx is not None and mcp_servers:
-        mcp_servers = await _pre_init_mcp_servers(mcp_servers, timeout=15.0)
+    # Collect MCP tool names for instructions
+    mcp_tool_names = [getattr(getattr(t, '__livekit_tool_info', None), 'name', '?') for t in mcp_tools]
 
-    # 5. Build Agent
-    agent = Agent(instructions=agent_data.get("instructions", "You are a helpful assistant."))
+    # 4. Build delegation tools (entry agent stays in control, delegates queries internally)
+    delegation_tools = _build_delegation_tools(edges, entry_agent_node["id"], nodes_by_id)
+
+    # Combine all tools
+    all_tools = delegation_tools + mcp_tools
+
+    # 5. Enhance instructions with capability context so the LLM knows what it can do
+    base_instructions = agent_data.get("instructions", "You are a helpful assistant.")
+    instructions = _enhance_instructions(base_instructions, delegation_tools, mcp_tools, mcp_tool_names)
+
+    # 6. Build the entry Agent (no mcp_servers — tools are wrapped as function_tools)
+    agent = Agent(
+        instructions=instructions,
+        tools=all_tools,
+    )
+    logger.info(f"Entry agent built with {len(delegation_tools)} delegation + {len(mcp_tools)} MCP tool(s)")
 
     # 6. Build AgentSession (only when ctx is available)
     if ctx is None:
         logger.info("No ctx — returning (agent, None)")
         return (agent, None)
 
-    session = _build_session(ctx, agent_data, mcp_servers)
+    session = _build_session(ctx, agent_data)
     return (agent, session)
 
 
+def _build_delegation_tools(
+    edges: List[Dict],
+    source_id: str,
+    nodes_by_id: Dict[str, Dict],
+) -> List:
+    """Create delegation tools for AgentHandoff edges from *source_id*.
+
+    Delegation pattern: the entry agent stays in control. When it calls a
+    delegation tool, an internal LLM call is made with the target agent's
+    instructions. The result is returned as text, so the entry agent can
+    incorporate it into its response. No permanent agent switching occurs.
+    """
+    tools = []
+    for edge in edges:
+        if edge.get("type") != "AgentHandoff" or edge.get("source") != source_id:
+            continue
+
+        target_node = nodes_by_id.get(edge.get("target"))
+        if not target_node or target_node.get("type") != "agentNode":
+            continue
+
+        target_data = target_node.get("data", {})
+        if not target_data.get("is_enabled", True):
+            continue
+
+        target_name = target_data.get("name", "Agent")
+        handoff_desc = target_data.get(
+            "handoff_description",
+            f"Delegate to {target_name}",
+        )
+
+        tool = _make_delegation_tool(target_name, handoff_desc, target_data)
+        tools.append(tool)
+        logger.info(f"Registered delegation tool → {target_name}")
+
+    return tools
+
+
+def _enhance_instructions(
+    base: str,
+    handoff_tools: List,
+    mcp_tools: List,
+    mcp_tool_names: Optional[List[str]] = None,
+) -> str:
+    """Append capability context to the agent's instructions.
+
+    The LLM needs to know what tools it has and when to use them,
+    especially for handoffs — otherwise it just says "I can't do that."
+    """
+    extras = []
+
+    # MCP tools go FIRST so the LLM prioritizes them over delegation
+    if mcp_tools:
+        lines = [
+            "PRIORITY TOOLS — You have direct access to these tools via MCP servers. "
+            "You MUST use these tools FIRST when the user asks about spreadsheets, "
+            "Google Sheets, creating rows, columns, or any data operations. "
+            "Do NOT delegate these tasks to other agents."
+        ]
+        if mcp_tool_names:
+            lines.append("Your available MCP tools:")
+            for t in mcp_tool_names:
+                lines.append(f"  - `{t}`")
+            lines.append(
+                "Call these tools directly. Do NOT say you can't do it. "
+                "Do NOT delegate spreadsheet/data tasks to the web search agent."
+            )
+        extras.append("\n".join(lines))
+
+    if handoff_tools:
+        lines = [
+            "You can also delegate tasks to specialized agents "
+            "(ONLY for tasks that your MCP tools cannot handle):"
+        ]
+        for t in handoff_tools:
+            info = getattr(t, "__livekit_tool_info", None)
+            name = info.name if info else getattr(t, "__name__", "unknown")
+            desc = info.description if info else getattr(t, "__doc__", "")
+            lines.append(f"  - Call `{name}` — {desc}")
+        lines.append(
+            "Only use delegation when the request is clearly outside your MCP tool capabilities "
+            "(e.g. general knowledge questions, web lookups)."
+        )
+        extras.append("\n".join(lines))
+
+    if not extras:
+        return base
+
+    return base.rstrip() + "\n\n" + "\n\n".join(extras)
+
+
+def _make_delegation_tool(
+    target_name: str,
+    description: str,
+    target_data: Dict,
+) -> Any:
+    """Create a @function_tool that delegates to a specialist agent via an
+    internal LLM call and returns the text response.
+
+    The entry agent stays in control the entire time — no agent switching.
+    The LLM passes the user's query, we call OpenAI with the target agent's
+    instructions, and return the result as text for the entry agent to use.
+    """
+    fn_name = f"ask_{'_'.join(target_name.lower().split())}"
+    model = target_data.get("model", "gpt-4o-mini")
+    target_instructions = target_data.get("instructions", "You are a helpful assistant.")
+
+    async def _delegation_fn(query: str) -> str:
+        logger.info(f"Delegation → {target_name} | query: {query[:80]}")
+        try:
+            client = AsyncOpenAI()
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": target_instructions},
+                    {"role": "user", "content": query},
+                ],
+            )
+            result = response.choices[0].message.content or ""
+            logger.info(f"Delegation ← {target_name} | response: {result[:80]}")
+            return result
+        except Exception as e:
+            logger.exception(f"Delegation to {target_name} failed: {e}")
+            return f"Sorry, I couldn't reach {target_name} right now."
+
+    _delegation_fn.__name__ = fn_name
+    _delegation_fn.__qualname__ = fn_name
+    _delegation_fn.__doc__ = description
+    return function_tool(_delegation_fn, name=fn_name, description=description)
+
+
 # ---------------------------------------------------------------------------
-# MCP server with allowed_tools filtering
+# MCP tool wrappers — each allowed_tool becomes a @function_tool
+# ---------------------------------------------------------------------------
+
+def _build_mcp_tool_wrappers(
+    edges: List[Dict],
+    agent_id: str,
+    nodes_by_id: Dict[str, Dict],
+) -> List:
+    """Create @function_tool wrappers for each MCP tool defined in the workflow.
+
+    Instead of passing MCPServerHTTP to the Agent (which requires a persistent
+    SSE connection that may time out), we create a regular @function_tool for
+    each allowed_tool. When called, the tool makes a fresh MCP connection,
+    calls the tool, and returns the result.
+
+    This ensures the tools ALWAYS appear in the LLM's tool schema.
+    """
+    tools = []
+    for edge in edges:
+        if edge.get("source") != agent_id or edge.get("sourceHandle") != "tools":
+            continue
+        tool_node = nodes_by_id.get(edge.get("target"))
+        if not tool_node or tool_node.get("type") != "toolNode":
+            continue
+
+        data = tool_node.get("data", {})
+        if data.get("toolType") != "mcp" or not data.get("is_enabled", True):
+            continue
+
+        config = data.get("config", {})
+        url = config.get("url", "")
+        headers = config.get("headers")
+        allowed = config.get("allowed_tools", [])
+
+        if not url or not isinstance(allowed, list):
+            continue
+
+        for tool_name in allowed:
+            if not isinstance(tool_name, str):
+                continue
+            tool = _make_mcp_tool_wrapper(tool_name, url, headers)
+            tools.append(tool)
+
+    logger.info(f"Created {len(tools)} MCP tool wrapper(s)")
+    return tools
+
+
+def _make_mcp_tool_wrapper(tool_name: str, url: str, headers: Optional[Dict]) -> Any:
+    """Create a @function_tool that calls a single MCP tool via a fresh connection.
+
+    Each call creates a fresh MCP connection → initializes → calls tool → closes.
+    The tool takes an 'instructions' parameter — a natural-language description
+    of what to do (e.g. "Create a spreadsheet named Expenses").
+    """
+    description = (
+        f"MCP tool: {tool_name.replace('_', ' ')}. "
+        "Pass a clear natural-language instruction describing what to do."
+    )
+
+    async def _mcp_call(instructions: str) -> str:
+        logger.info(f"MCP tool call → {tool_name} | instructions: {instructions[:100]}")
+        parsed = {"instructions": instructions}
+
+        server = mcp.MCPServerHTTP(
+            url=url,
+            headers=headers,
+            timeout=30,
+            sse_read_timeout=60,
+            client_session_timeout_seconds=60,
+        )
+        # Force Streamable HTTP transport — Zapier (and many modern MCP servers)
+        # use Streamable HTTP, not SSE. The SDK auto-detects only for URLs ending
+        # in /mcp, but Zapier's URL ends in /connect, causing an SSE timeout.
+        server._use_streamable_http = True
+        try:
+            await asyncio.wait_for(server.initialize(), timeout=30.0)
+            # Use the internal MCP client to call the tool
+            tool_result = await asyncio.wait_for(
+                server._client.call_tool(tool_name, parsed),
+                timeout=30.0,
+            )
+            if tool_result.isError:
+                error_str = "\n".join(str(part) for part in tool_result.content)
+                logger.warning(f"MCP tool error ← {tool_name}: {error_str}")
+                return f"Tool error: {error_str}"
+
+            result = "\n".join(str(part) for part in tool_result.content)
+            logger.info(f"MCP tool result ← {tool_name} | {result[:100]}")
+            return result
+        except asyncio.TimeoutError:
+            msg = f"MCP tool {tool_name} timed out (30s) connecting to server"
+            logger.warning(msg)
+            return msg
+        except Exception as e:
+            msg = f"MCP tool {tool_name} failed: {e}"
+            logger.exception(msg)
+            return msg
+        finally:
+            try:
+                await server.aclose()
+            except Exception:
+                pass
+
+    _mcp_call.__name__ = tool_name
+    _mcp_call.__qualname__ = tool_name
+    _mcp_call.__doc__ = description
+    return function_tool(_mcp_call, name=tool_name, description=description)
+
+
+# ---------------------------------------------------------------------------
+# MCP server with allowed_tools filtering (kept for create_mcp_server validation)
 # ---------------------------------------------------------------------------
 
 class _FilteredMCPServer(mcp.MCPServerHTTP):
@@ -145,9 +401,9 @@ def create_mcp_server(config: Dict[str, Any]):
             url=url,
             headers=headers,
             allowed_tools=allowed_tools if allowed_tools else None,
-            timeout=10,
-            sse_read_timeout=30,
-            client_session_timeout_seconds=10,
+            timeout=30,
+            sse_read_timeout=300,
+            client_session_timeout_seconds=300,
         )
         logger.info(f"Created MCP server: {url}  (tools: {len(allowed_tools) if allowed_tools else 'all'})")
         return server
@@ -209,6 +465,32 @@ def _build_mcp_servers(
     return servers
 
 
+def _collect_mcp_tool_names(
+    edges: List[Dict],
+    agent_id: str,
+    nodes_by_id: Dict[str, Dict],
+) -> List[str]:
+    """Extract allowed_tools names from tool nodes connected to *agent_id*.
+
+    This is used purely for instructions — telling the LLM what tools exist.
+    """
+    tool_names = []
+    for edge in edges:
+        if edge.get("source") != agent_id or edge.get("sourceHandle") != "tools":
+            continue
+        tool_node = nodes_by_id.get(edge.get("target"))
+        if not tool_node or tool_node.get("type") != "toolNode":
+            continue
+        data = tool_node.get("data", {})
+        if data.get("toolType") != "mcp" or not data.get("is_enabled", True):
+            continue
+        config = data.get("config", {})
+        allowed = config.get("allowed_tools", [])
+        if isinstance(allowed, list):
+            tool_names.extend(t for t in allowed if isinstance(t, str))
+    return tool_names
+
+
 async def _pre_init_mcp_servers(servers: List, timeout: float = 15.0) -> List:
     """Pre-initialize MCP servers with a timeout so session.start() doesn't hang."""
     if not servers:
@@ -231,8 +513,8 @@ async def _pre_init_mcp_servers(servers: List, timeout: float = 15.0) -> List:
     return ready
 
 
-def _build_session(ctx, agent_data: Dict, mcp_servers: List) -> Optional[AgentSession]:
-    """Build an AgentSession with STT, LLM, TTS, VAD, MCP, and turn detection."""
+def _build_session(ctx, agent_data: Dict) -> Optional[AgentSession]:
+    """Build an AgentSession with STT, LLM, TTS, VAD, and turn detection."""
     try:
         vad = ctx.proc.userdata.get("vad")
         if not vad:
@@ -249,7 +531,6 @@ def _build_session(ctx, agent_data: Dict, mcp_servers: List) -> Optional[AgentSe
             llm=LLM(model=agent_data.get("model", "gpt-4o-mini")),
             tts=TTS(voice=tts_cfg.get("voice", "nova")),
             vad=vad,
-            mcp_servers=mcp_servers or None,
             turn_detection=turn_detector.EnglishModel(),
         )
         logger.info("AgentSession built successfully")
