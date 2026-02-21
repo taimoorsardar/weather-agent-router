@@ -24,6 +24,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(name)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# Import plugins on the main thread so they register before workers spawn
+from livekit.plugins import silero, noise_cancellation, openai as _openai_plugin  # noqa: F401
+from livekit.plugins.turn_detector import english as _td  # noqa: F401
+
 WORKFLOW_PATH = Path(__file__).parent / "sample_workflow.json"
 _ENV_WORKFLOW_PATH = "RUN_PY_WORKFLOW_PATH"
 
@@ -34,7 +38,6 @@ def load_workflow(path: Path) -> dict:
 
 async def _rtc_entrypoint(ctx):
     from livekit.agents import room_io
-    from livekit.plugins import noise_cancellation
 
     # Ensure workflow_parser loggers are visible in worker process
     logging.getLogger("workflow_parser").setLevel(logging.INFO)
@@ -58,14 +61,14 @@ async def _rtc_entrypoint(ctx):
         agent=agent,
         room=ctx.room,
         room_options=room_io.RoomOptions(
-            audio_input=room_io.AudioInputOptions(noise_cancellation=noise_cancellation.BVC()),
+            audio_input=room_io.AudioInputOptions(
+                noise_cancellation=noise_cancellation.BVC(),
+            ),
         ),
     )
-    await ctx.connect()
 
 
 def _prewarm(proc):
-    from livekit.plugins import silero
     proc.userdata["vad"] = silero.VAD.load()
 
 
